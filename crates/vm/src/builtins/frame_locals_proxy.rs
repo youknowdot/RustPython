@@ -148,7 +148,7 @@ impl FrameLocalsProxy {
         if other.downcast_ref::<PyDict>().is_some() {
             // PyDict_Update reads a dict subclass's stored entries directly;
             // it does not dispatch to overridden mapping methods.
-            result.merge_dict(&other.downcast().unwrap(), true, vm)?;
+            result.merge_dict(&other.downcast::<PyDict>().unwrap(), true, vm)?;
         } else {
             result.merge_object(other, vm)?;
         }
