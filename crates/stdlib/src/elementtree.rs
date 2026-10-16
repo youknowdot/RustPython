@@ -2366,6 +2366,16 @@ pub(crate) mod _elementtree {
             uri: PyObjectRef,
             vm: &VirtualMachine,
         ) -> PyResult<()> {
+            let prefix = if vm.is_none(&prefix) {
+                vm.ctx.new_str("").into()
+            } else {
+                prefix
+            };
+            let uri = if vm.is_none(&uri) {
+                vm.ctx.new_str("").into()
+            } else {
+                uri
+            };
             if let Some(builder) = zelf.native_target(vm) {
                 // The standard tree builder has no start_ns() of its own; it
                 // only forwards the event when one was asked for.
@@ -2389,6 +2399,11 @@ pub(crate) mod _elementtree {
             }
             let handler = zelf.state.read().handle_end_ns.clone();
             if let Some(handler) = handler {
+                let prefix = if vm.is_none(&prefix) {
+                    vm.ctx.new_str("").into()
+                } else {
+                    prefix
+                };
                 handler.call((prefix,), vm)?;
             }
             Ok(())
