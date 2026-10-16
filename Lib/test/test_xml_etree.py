@@ -625,7 +625,6 @@ class ElementTreeTest(unittest.TestCase):
         elem[0] = ET.PI("key", "value")
         self.serialize_check(elem, 'text<?key value?><subtag>subtext</subtag>')
 
-    @unittest.expectedFailure  # TODO: RUSTPYTHON
     def test_custom_builder(self):
         # Test parser w. custom builder.
 
@@ -1487,7 +1486,6 @@ class IterparseTest(unittest.TestCase):
             del cm
             gc_collect()
 
-    @unittest.expectedFailure  # TODO: RUSTPYTHON
     def test_non_utf8(self):
         source = io.BytesIO(
             b"<?xml version='1.0' encoding='iso-8859-1'?>\n"
@@ -1744,7 +1742,6 @@ class XMLPullParserTest(unittest.TestCase):
         self.assert_event_tags(parser, [('end', '{namespace}root')])
         self.assertIsNone(parser.close())
 
-    @unittest.expectedFailure  # TODO: RUSTPYTHON
     def test_ns_events(self):
         parser = ET.XMLPullParser(events=('start-ns', 'end-ns'))
         self._feed(parser, "<!-- comment -->\n")
@@ -1760,7 +1757,6 @@ class XMLPullParserTest(unittest.TestCase):
         self.assertEqual(list(parser.read_events()), [('end-ns', None)])
         self.assertIsNone(parser.close())
 
-    @unittest.expectedFailure  # TODO: RUSTPYTHON
     def test_ns_events_start(self):
         parser = ET.XMLPullParser(events=('start-ns', 'start', 'end'))
         self._feed(parser, "<tag xmlns='abc' xmlns:p='xyz'>\n")
@@ -1784,7 +1780,6 @@ class XMLPullParserTest(unittest.TestCase):
             ('end', '{abc}tag'),
         ])
 
-    @unittest.expectedFailure  # TODO: RUSTPYTHON
     def test_ns_events_start_end(self):
         parser = ET.XMLPullParser(events=('start-ns', 'start', 'end', 'end-ns'))
         self._feed(parser, "<tag xmlns='abc' xmlns:p='xyz'>\n")
