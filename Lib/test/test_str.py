@@ -1521,7 +1521,6 @@ class StrTest(string_tests.StringLikeTest,
         self.assertEqual('{:{f}}{g}{}'.format(1, 3, g='g', f=2), ' 1g3')
         self.assertEqual('{f:{}}{}{g}'.format(2, 4, f=1, g='g'), ' 14g')
 
-    @unittest.expectedFailure  # TODO: RUSTPYTHON; %c error wording uses bare class name; CPython uses fully qualified module.qualname (e.g. test.test_str.PseudoFloat)
     def test_formatting(self):
         string_tests.StringLikeTest.test_formatting(self)
         # Testing Unicode formatting strings...

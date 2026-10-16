@@ -1702,11 +1702,9 @@ class XMLPullParserTest(unittest.TestCase):
         self.assert_event_tags(parser, [('end', 'root')])
         self.assertIsNone(parser.close())
 
-    @unittest.expectedFailure  # TODO: RUSTPYTHON
     def test_simple_xml_chunk_1(self):
         self.test_simple_xml(chunk_size=1, flush=True)
 
-    @unittest.expectedFailure  # TODO: RUSTPYTHON
     def test_simple_xml_chunk_5(self):
         self.test_simple_xml(chunk_size=5, flush=True)
 
@@ -2615,7 +2613,6 @@ class BugsTest(unittest.TestCase):
         text = b'x' + b'\xc3\xa0' * 1024
         self.check_expat224_utf8_bug(text)
 
-    @unittest.expectedFailure  # TODO: RUSTPYTHON
     def test_expat224_utf8_bug_file(self):
         with open(UTF8_BUG_XMLFILE, 'rb') as fp:
             raw = fp.read()
@@ -4719,7 +4716,6 @@ class C14NTest(unittest.TestCase):
     #
     # simple roundtrip tests (from c14n.py)
 
-    @unittest.expectedFailure  # TODO: RUSTPYTHON
     def test_simple_roundtrip(self):
         # Basics
         self.assertEqual(c14n_roundtrip("<doc/>"), '<doc></doc>')
@@ -4760,7 +4756,6 @@ class C14NTest(unittest.TestCase):
         xml = '<X xmlns="http://nps/a"><Y xmlns:b="http://nsp/b" b:targets="abc,xyz"></Y></X>'
         self.assertEqual(c14n_roundtrip(xml), xml)
 
-    @unittest.expectedFailure  # TODO: RUSTPYTHON
     def test_c14n_exclusion(self):
         xml = textwrap.dedent("""\
         <root xmlns:x="http://example.com/x">

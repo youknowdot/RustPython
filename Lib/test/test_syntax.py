@@ -1470,17 +1470,17 @@ Better error message for using `except as` with not a name:
 
 Regression tests for gh-133999:
 
-   >>> try: pass  # TODO: RUSTPYTHON; Wrong error message # doctest: +EXPECTED_FAILURE
+   >>> try: pass
    ... except TypeError as name: raise from None
    Traceback (most recent call last):
    SyntaxError: did you forget an expression between 'raise' and 'from'?
 
-   >>> try: pass  # TODO: RUSTPYTHON; Wrong error message # doctest: +EXPECTED_FAILURE
+   >>> try: pass
    ... except* TypeError as name: raise from None
    Traceback (most recent call last):
    SyntaxError: did you forget an expression between 'raise' and 'from'?
 
-   >>> match 1:  # TODO: RUSTPYTHON; Wrong error message # doctest: +EXPECTED_FAILURE
+   >>> match 1:
    ...     case 1 | 2 as abc: raise from None
    Traceback (most recent call last):
    SyntaxError: did you forget an expression between 'raise' and 'from'?
