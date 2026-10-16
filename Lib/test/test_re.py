@@ -2742,10 +2742,6 @@ class ReTests(unittest.TestCase):
         self.check_interrupt(r'([^:]){2,4}?:', 'abc:', 100)
         self.check_interrupt(r'([^:]){2,4}+:', 'abc:', 100)
 
-    @unittest.expectedFailure  # TODO: RUSTPYTHON
-    def test_template_function_and_flag_is_deprecated(self):
-        return super().test_template_function_and_flag_is_deprecated()
-
 
 def get_debug_out(pat):
     with captured_stdout() as out:

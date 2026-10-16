@@ -22,7 +22,6 @@ import warnings
 
 
 __all__ = [
-    "requires_root_user", "requires_non_root_user",
     # globals
     "PIPE_MAX_SIZE", "verbose", "max_memuse", "use_resources", "failfast",
     # exceptions

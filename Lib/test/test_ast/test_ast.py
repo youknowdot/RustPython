@@ -1164,14 +1164,6 @@ class AST_Tests(unittest.TestCase):
             self.assertEqual(wm.filename, filename)
             self.assertIs(wm.category, SyntaxWarning)
 
-    @unittest.expectedFailure  # TODO: RUSTPYTHON; ValueError: compile() unrecognized flags
-    def test_optimization_levels_const_folding(self):
-        return super().test_optimization_levels_const_folding()
-
-    @unittest.expectedFailure  # TODO: RUSTPYTHON; will be removed in Python 3.14
-    def test_constant_subclasses_deprecated(self):
-        return super().test_constant_subclasses_deprecated()
-
 
 class CopyTests(unittest.TestCase):
     """Test copying and pickling AST nodes."""
@@ -3885,46 +3877,6 @@ class ASTOptimizationTests(unittest.TestCase):
         folded = "MatchValue(value=Constant(value=(1+2j)))"
         for optval in (0, 1, 2):
             self.assertIn(folded if optval else unfolded, ast.dump(ast.parse(src, optimize=optval)))
-
-    @unittest.expectedFailure  # TODO: RUSTPYTHON; ValueError: compile() unrecognized flags
-    def test_folding_binop(self):
-        return super().test_folding_binop()
-
-    @unittest.expectedFailure  # TODO: RUSTPYTHON; ValueError: compile() unrecognized flags
-    def test_folding_comparator(self):
-        return super().test_folding_comparator()
-
-    @unittest.expectedFailure  # TODO: RUSTPYTHON; ValueError: compile() unrecognized flags
-    def test_folding_iter(self):
-        return super().test_folding_iter()
-
-    @unittest.expectedFailure  # TODO: RUSTPYTHON; ValueError: compile() unrecognized flags
-    def test_folding_not(self):
-        return super().test_folding_not()
-
-    @unittest.expectedFailure  # TODO: RUSTPYTHON; ValueError: compile() unrecognized flags
-    def test_folding_subscript(self):
-        return super().test_folding_subscript()
-
-    @unittest.expectedFailure  # TODO: RUSTPYTHON; ValueError: compile() unrecognized flags
-    def test_folding_tuple(self):
-        return super().test_folding_tuple()
-
-    @unittest.expectedFailure  # TODO: RUSTPYTHON; ValueError: compile() unrecognized flags
-    def test_folding_type_param_in_class_def(self):
-        return super().test_folding_type_param_in_class_def()
-
-    @unittest.expectedFailure  # TODO: RUSTPYTHON; ValueError: compile() unrecognized flags
-    def test_folding_type_param_in_function_def(self):
-        return super().test_folding_type_param_in_function_def()
-
-    @unittest.expectedFailure  # TODO: RUSTPYTHON; ValueError: compile() unrecognized flags
-    def test_folding_type_param_in_type_alias(self):
-        return super().test_folding_type_param_in_type_alias()
-
-    @unittest.expectedFailure  # TODO: RUSTPYTHON; ValueError: compile() unrecognized flags
-    def test_folding_unaryop(self):
-        return super().test_folding_unaryop()
 
 
 if __name__ == '__main__':
