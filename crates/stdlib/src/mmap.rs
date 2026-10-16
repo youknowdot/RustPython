@@ -192,6 +192,8 @@ mod mmap {
         mmap: PyMutex<Option<MmapObj>>,
         #[cfg(unix)]
         fd: AtomicCell<i32>,
+        #[cfg(target_os = "netbsd")]
+        flags: core::ffi::c_int,
         #[cfg(windows)]
         handle: AtomicCell<isize>, // host_mmap::Handle is isize on Windows
         offset: i64,
@@ -491,6 +493,8 @@ mod mmap {
                 anonymous,
                 #[cfg(target_os = "linux")]
                 private: flags & MAP_PRIVATE != 0,
+                #[cfg(target_os = "netbsd")]
+                flags,
                 fd: AtomicCell::new(retained_fd.map_or(-1, |owned| owned.into_raw())),
                 offset,
                 size: AtomicCell::new(map_size),
@@ -797,7 +801,7 @@ mod mmap {
             Ok(m)
         }
 
-        #[cfg(any(target_os = "linux", windows, all(test, feature = "threading")))]
+        #[cfg(any(unix, windows, all(test, feature = "threading")))]
         fn check_resizeable(
             &self,
             vm: &VirtualMachine,
@@ -1156,6 +1160,29 @@ mod mmap {
             unsafe { mapping.remap(newsize) }.map_err(|err| err.to_pyexception(vm))?;
             zelf.size.store(newsize);
             Ok(())
+        }
+
+        #[cfg(all(unix, not(target_os = "linux")))]
+        #[pymethod]
+        fn resize(zelf: &Py<Self>, newsize: PyIntRef, vm: &VirtualMachine) -> PyResult<()> {
+            drop(zelf.check_resizeable(vm)?);
+
+            let new_size: isize = newsize.try_to_primitive(vm).map_err(|_| {
+                vm.new_overflow_error("Python int too large to convert to C ssize_t")
+            })?;
+
+            // NetBSD mremap() can return a grown region without backing.
+            #[cfg(target_os = "netbsd")]
+            if zelf.fd.load() == -1
+                && zelf.flags & host_mmap::MAP_PRIVATE == 0
+                && new_size > zelf.size.load() as isize
+            {
+                return Err(vm.new_value_error("mmap: can't expand a shared anonymous mapping"));
+            }
+
+            #[cfg(not(target_os = "netbsd"))]
+            let _ = new_size;
+            Err(vm.new_system_error("mmap: resizing not available--no mremap()"))
         }
 
         #[cfg(windows)]
