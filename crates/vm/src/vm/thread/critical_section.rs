@@ -16,10 +16,6 @@ pub(crate) struct CriticalSectionLock {
 }
 
 impl CriticalSectionLock {
-    #[cfg_attr(
-        not(all(test, feature = "threading")),
-        expect(dead_code, reason = "Removed when the profiler consumer is wired")
-    )]
     pub(crate) fn new(vm: &VirtualMachine) -> Self {
         Self {
             interpreter_id: vm.state.interpreter_id,
@@ -33,10 +29,6 @@ impl CriticalSectionLock {
     /// Calling Python can suspend this lock, so revalidate state afterward.
     /// This API deliberately exposes no guard or data reference. Traversal
     /// uses separate short payload locks; there is no stopped-world bypass.
-    #[cfg_attr(
-        not(all(test, feature = "threading")),
-        expect(dead_code, reason = "Removed when the profiler consumer is wired")
-    )]
     pub(crate) fn with<R>(&self, vm: &VirtualMachine, f: impl FnOnce() -> R) -> R {
         assert_eq!(self.interpreter_id, vm.state.interpreter_id);
         #[cfg(feature = "threading")]
