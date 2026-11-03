@@ -12,7 +12,7 @@ mod mmap {
         AsObject, FromArgs, Py, PyObject, PyObjectRef, PyPayload, PyRef, PyResult,
         TryFromBorrowedObject, VirtualMachine, atomic_func,
         builtins::{PyBytes, PyBytesRef, PyInt, PyIntRef, PyType, PyTypeRef, PyUtf8StrRef},
-        byte::{bytes_from_object, value_from_object},
+        byte::value_from_object,
         convert::ToPyException,
         function::{ArgBytesLike, ArgIndex, ArgIntoBool},
         protocol::{
@@ -21,10 +21,9 @@ mod mmap {
         sliceable::{NameMmap, SaturatedSlice, SequenceIndex, SequenceIndexOp},
         types::{AsBuffer, AsMapping, AsSequence, Constructor, Representable},
     };
-    use core::ops::{Deref, DerefMut};
+    use core::ops::Deref;
     use crossbeam_utils::atomic::AtomicCell;
-    use num_traits::{Signed, ToPrimitive};
-    use std::io::Write;
+    use num_traits::ToPrimitive;
     #[cfg(windows)]
     use {core::hint::cold_path, memchr::memchr, rustpython_vm::exceptions, std::io};
 
@@ -295,6 +294,19 @@ mod mmap {
         }
     }
 
+    // Clinic's Py_ssize_t conversion checks range before entering the method,
+    // and must not replace exceptions raised by an __index__ implementation.
+    struct SsizeArg(isize);
+
+    impl<'a> TryFromBorrowedObject<'a> for SsizeArg {
+        fn try_from_borrowed_object(vm: &VirtualMachine, obj: &'a PyObject) -> PyResult<Self> {
+            let index = obj.try_index(vm)?;
+            index.as_bigint().to_isize().map(Self).ok_or_else(|| {
+                vm.new_overflow_error("Python int too large to convert to C ssize_t")
+            })
+        }
+    }
+
     #[derive(FromArgs)]
     struct ReadArgs {
         #[pyarg(positional, optional)]
@@ -304,7 +316,7 @@ mod mmap {
     #[derive(FromArgs)]
     struct SeekArgs {
         #[pyarg(positional)]
-        pos: isize,
+        pos: SsizeArg,
         #[pyarg(positional, default)]
         whence: core::ffi::c_int,
     }
@@ -813,15 +825,29 @@ mod mmap {
             vm: &VirtualMachine,
             f: impl FnOnce(&mut [u8]) -> R,
         ) -> PyResult<R> {
-            if matches!(self.access, AccessMode::Read) {
-                return Err(vm.new_type_error("mmap can't modify a readonly memory map."));
-            }
-
-            match self.check_valid(vm)?.deref_mut().as_mut().unwrap() {
+            let mut mapping = self.check_valid(vm)?;
+            self.check_writable(vm)?;
+            match mapping.as_mut().unwrap() {
                 MmapObj::Mapped(mmap) => Ok(f(mmap.as_mut_slice())),
                 #[cfg(windows)]
                 MmapObj::Named(named) => Ok(f(named.as_mut_slice())),
             }
+        }
+
+        fn check_writable(&self, vm: &VirtualMachine) -> PyResult<()> {
+            if matches!(self.access, AccessMode::Read) {
+                return Err(vm.new_type_error("mmap can't modify a readonly memory map."));
+            }
+            Ok(())
+        }
+
+        #[cfg(any(target_os = "linux", windows))]
+        fn resize_sizes(&self, newsize: isize, vm: &VirtualMachine) -> PyResult<(usize, i128)> {
+            let file_size = i128::from(self.offset) + newsize as i128;
+            if newsize < 0 || file_size > isize::MAX as i128 {
+                return Err(vm.new_value_error("new size out of range"));
+            }
+            Ok((newsize as usize, file_size))
         }
 
         fn check_valid(&self, vm: &VirtualMachine) -> PyResult<PyMutexGuard<'_, Option<MmapObj>>> {
@@ -1041,44 +1067,27 @@ mod mmap {
         #[pymethod(name = "move")]
         fn move_(
             zelf: &Py<Self>,
-            dest: ArgIndex,
-            src: ArgIndex,
-            count: ArgIndex,
+            dest: SsizeArg,
+            src: SsizeArg,
+            count: SsizeArg,
             vm: &VirtualMachine,
         ) -> PyResult<()> {
-            fn args(
-                dest: &Py<PyInt>,
-                src: &Py<PyInt>,
-                count: &Py<PyInt>,
-                size: usize,
-                vm: &VirtualMachine,
-            ) -> Option<(usize, usize, usize)> {
-                if dest.as_bigint().is_negative()
-                    || src.as_bigint().is_negative()
-                    || count.as_bigint().is_negative()
-                {
-                    return None;
-                }
-                let dest = dest.try_to_primitive(vm).ok()?;
-                let src = src.try_to_primitive(vm).ok()?;
-                let cnt = count.try_to_primitive(vm).ok()?;
-                if dest > size || src > size || size - dest < cnt || size - src < cnt {
-                    return None;
-                }
-                Some((dest, src, cnt))
-            }
-
+            let (dest, src, count) = (dest.0, src.0, count.0);
             zelf.try_writable(vm, |mmap| {
-                let (dest, src, cnt) =
-                    args(dest.as_ref(), src.as_ref(), count.as_ref(), mmap.len(), vm).ok_or_else(
-                        || vm.new_value_error("source, destination, or count out of range"),
-                    )?;
-                let dest_end = dest + cnt;
-                let src_end = src + cnt;
-                let src_buf = mmap[src..src_end].to_vec();
-                (&mut mmap[dest..dest_end])
-                    .write(&src_buf)
-                    .map_err(|e| e.to_pyexception(vm))?;
+                if dest < 0
+                    || src < 0
+                    || count < 0
+                    || dest as usize > mmap.len()
+                    || src as usize > mmap.len()
+                    || count as usize > mmap.len() - dest as usize
+                    || count as usize > mmap.len() - src as usize
+                {
+                    return Err(vm.new_value_error("source, destination, or count out of range"));
+                }
+                let (dest, src, count) = (dest as usize, src as usize, count as usize);
+                // Like memmove, copy_within handles overlap without allocating
+                // a temporary buffer proportional to the requested move.
+                mmap.copy_within(src..src + count, dest);
                 Ok(())
             })?
         }
@@ -1163,18 +1172,11 @@ mod mmap {
 
         #[cfg(target_os = "linux")]
         #[pymethod]
-        fn resize(zelf: &Py<Self>, newsize: PyIntRef, vm: &VirtualMachine) -> PyResult<()> {
-            let newsize: isize = newsize.try_to_primitive(vm).map_err(|_| {
-                vm.new_overflow_error("Python int too large to convert to C ssize_t")
-            })?;
+        fn resize(zelf: &Py<Self>, newsize: SsizeArg, vm: &VirtualMachine) -> PyResult<()> {
             // Reject exports before taking the data lock, and retain the guard
             // through truncation and remapping so a new export cannot race us.
             let mut mmap = zelf.check_resizeable(vm)?;
-            let file_size = i128::from(zelf.offset) + newsize as i128;
-            if newsize < 0 || file_size > isize::MAX as i128 {
-                return Err(vm.new_value_error("new size out of range"));
-            }
-            let newsize = newsize as usize;
+            let (newsize, file_size) = zelf.resize_sizes(newsize.0, vm)?;
             if zelf.anonymous && !zelf.private && newsize > zelf.__len__() {
                 return Err(vm.new_value_error("mmap: can't expand a shared anonymous mapping"));
             }
@@ -1197,16 +1199,13 @@ mod mmap {
 
         #[cfg(windows)]
         #[pymethod]
-        fn resize(zelf: &Py<Self>, newsize: PyIntRef, vm: &VirtualMachine) -> PyResult<()> {
-            let newsize = newsize.as_bigint().to_usize();
-
+        fn resize(zelf: &Py<Self>, newsize: SsizeArg, vm: &VirtualMachine) -> PyResult<()> {
             // Get the lock on mmap
             // Keep the export check valid until resize ends.
             let mut mmap_guard = zelf.check_resizeable(vm)?;
-            let Some(newsize) = newsize else {
-                drop(mmap_guard);
-                return Err(vm.new_value_error("new size out of range"));
-            };
+            let (newsize, required_size) = zelf.resize_sizes(newsize.0, vm)?;
+            // resize_sizes bounds the sum by Py_ssize_t::MAX, which fits i64.
+            let required_size = required_size as i64;
             if newsize == 0 {
                 drop(mmap_guard);
                 return Err(vm.new_value_error("new size must be positive"));
@@ -1253,7 +1252,6 @@ mod mmap {
                 // Drop the current mmap to release the file mapping
                 *mmap_guard = None;
 
-                let required_size = zelf.offset + newsize as i64;
                 if let Err(err) = host_mmap::extend_file(handle as host_mmap::Handle, required_size)
                 {
                     // Restore original mmap on error
@@ -1284,18 +1282,12 @@ mod mmap {
                 zelf.size.store(newsize);
             }
 
-            // Adjust position if it's beyond the new size
-            let pos = zelf.pos.load();
-            if pos > newsize {
-                zelf.pos.store(newsize);
-            }
-
             Ok(())
         }
 
         #[pymethod]
         fn seek(zelf: &Py<Self>, args: SeekArgs, vm: &VirtualMachine) -> PyResult<usize> {
-            let dist = args.pos;
+            let dist = args.pos.0;
             let how = args.whence;
             let _mmap = zelf.check_valid(vm)?;
             let size = zelf.__len__();
@@ -1379,25 +1371,17 @@ mod mmap {
             let self_ = &**zelf;
 
             // Writing locks the map, and reading a source that views this same
-            // map locks it too, so such a source is copied out first.
-            let copied;
-            let borrowed;
-            let data: &[u8] = if bytes.source_object().is(zelf.as_object()) {
-                copied = bytes.borrow_buf().to_vec();
-                &copied
-            } else {
-                borrowed = bytes.borrow_buf();
-                &borrowed
-            };
+            // map locks it too, so such a source is copied out first. Snapshot
+            // other mutable sources as well to avoid opposite cross-map writes
+            // holding each other's source locks while acquiring the destination.
+            let data = bytes.borrow_buf_unlocked(vm)?;
 
             let len = self_.try_writable(vm, |mmap| {
                 let pos = self_.pos();
                 if pos > mmap.len() || mmap.len() - pos < data.len() {
                     return Err(vm.new_value_error("data out of range"));
                 }
-                (&mut mmap[pos..(pos + data.len())])
-                    .write(data)
-                    .map_err(|err| err.to_pyexception(vm))?;
+                mmap[pos..pos + data.len()].copy_from_slice(&data);
                 self_.advance_pos(data.len());
                 Ok(data.len())
             })??;
@@ -1551,6 +1535,9 @@ mod mmap {
             value: &PyObject,
             vm: &VirtualMachine,
         ) -> PyResult<()> {
+            // Subscription assignment checks access before running index or
+            // buffer callbacks; write() and move() check closure first instead.
+            zelf.check_writable(vm)?;
             match SequenceIndex::try_from_borrowed_object::<NameMmap>(vm, needle)? {
                 SequenceIndex::Int(i) => Self::setitem_by_index(zelf, i, value, vm),
                 SequenceIndex::Slice(slice) => Self::setitem_by_slice(zelf, &slice, value, vm),
@@ -1580,7 +1567,8 @@ mod mmap {
             value: &PyObject,
             vm: &VirtualMachine,
         ) -> PyResult<()> {
-            let bytes = bytes_from_object(vm, value)?;
+            let buffer = ArgBytesLike::try_from_borrowed_object(vm, value)?;
+            let bytes = buffer.borrow_buf_unlocked(vm)?;
 
             self.try_writable(vm, |mmap| {
                 let (range, step, slice_len) = slice.adjust_indices(mmap.len());
@@ -1592,21 +1580,14 @@ mod mmap {
                 if slice_len == 0 {
                     // do nothing
                 } else if step == 1 {
-                    (&mut mmap[range])
-                        .write(&bytes)
-                        .map_err(|err| err.to_pyexception(vm))?;
+                    mmap[range].copy_from_slice(&bytes);
+                } else if step.is_negative() {
+                    for (i, byte) in range.rev().step_by(step.unsigned_abs()).zip(bytes.iter()) {
+                        mmap[i] = *byte;
+                    }
                 } else {
-                    let mut bi = 0; // bytes index
-                    if step.is_negative() {
-                        for i in range.rev().step_by(step.unsigned_abs()) {
-                            mmap[i] = bytes[bi];
-                            bi += 1;
-                        }
-                    } else {
-                        for i in range.step_by(step.unsigned_abs()) {
-                            mmap[i] = bytes[bi];
-                            bi += 1;
-                        }
+                    for (i, byte) in range.step_by(step.unsigned_abs()).zip(bytes.iter()) {
+                        mmap[i] = *byte;
                     }
                 }
                 Ok(())
